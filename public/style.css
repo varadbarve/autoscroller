@@ -244,8 +244,8 @@ body {
 .platform-card {
   position: relative;
   background: var(--bg-card);
-  backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-lg);
   padding: 24px 16px;
@@ -395,8 +395,8 @@ body {
 /* Speed Control */
 .speed-control {
   background: var(--bg-card);
-  backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-lg);
   padding: 20px;
@@ -490,8 +490,8 @@ body {
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-md);
   background: var(--bg-card);
-  backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 0.75rem;
@@ -587,8 +587,8 @@ body {
 
 .stat-card {
   background: var(--bg-card);
-  backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-lg);
   padding: 18px;
@@ -681,8 +681,8 @@ body {
 
 .log-container {
   background: var(--bg-card);
-  backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-lg);
   padding: 12px;
