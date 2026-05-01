@@ -30,9 +30,10 @@ class AutoScroller {
     this.videoWatch = {
       lastKey: null,
       startedAt: null,
-      nearEndSince: null,
       lastCurrentTime: null,
+      lastSeekProgress: null,
       lastProgressAt: null,
+      completedAt: null,
     };
   }
 
@@ -175,7 +176,7 @@ class AutoScroller {
         const video = await this.getActiveVideoState();
         const now = Date.now();
 
-        if (!video || !video.hasUsableDuration) {
+        if (!video || (!video.hasUsableDuration && video.seekProgress === null)) {
           if (!this.videoWatch.startedAt) this.videoWatch.startedAt = now;
 
           if (now - this.videoWatch.startedAt >= this.interval * 1000) {
@@ -188,18 +189,24 @@ class AutoScroller {
           this.videoWatch = {
             lastKey: video.key,
             startedAt: now,
-            nearEndSince: null,
             lastCurrentTime: video.currentTime,
+            lastSeekProgress: video.seekProgress,
             lastProgressAt: now,
+            completedAt: null,
           };
-          this.log(`Watching video (${Math.round(video.duration)}s) until completion...`);
+          this.log(`Watching video (${Math.round(video.duration)}s) until seek bar reaches 100%...`);
         }
 
         const lastCurrentTime = this.videoWatch.lastCurrentTime;
-        const hasProgressed = lastCurrentTime === null || video.currentTime > lastCurrentTime + 0.15;
+        const lastSeekProgress = this.videoWatch.lastSeekProgress;
+        const videoProgressed = lastCurrentTime === null || video.currentTime > lastCurrentTime + 0.15;
+        const seekProgressed = video.seekProgress !== null
+          && (lastSeekProgress === null || video.seekProgress > lastSeekProgress + 0.002);
+        const hasProgressed = videoProgressed || seekProgressed;
 
         if (hasProgressed) {
           this.videoWatch.lastCurrentTime = video.currentTime;
+          this.videoWatch.lastSeekProgress = video.seekProgress;
           this.videoWatch.lastProgressAt = now;
         } else if (!this.videoWatch.lastProgressAt) {
           this.videoWatch.lastProgressAt = now;
@@ -210,20 +217,24 @@ class AutoScroller {
           return;
         }
 
-        if (video.ended || video.remaining <= 0.35 || video.progress >= 0.985) {
-          await this.scrollNext('video ended');
-          return;
-        }
+        const completedBySeekBar = video.seekProgress !== null && video.seekProgress >= 0.9995;
+        const completedByVideoApi = video.seekProgress === null
+          && (video.ended || video.progress >= 0.9995 || video.remaining <= 0.05);
 
-        if (video.remaining <= 0.9) {
-          if (!this.videoWatch.nearEndSince) this.videoWatch.nearEndSince = now;
-          if (now - this.videoWatch.nearEndSince >= 700) {
-            await this.scrollNext('video reached the end');
+        if (completedBySeekBar || completedByVideoApi) {
+          if (!this.videoWatch.completedAt) {
+            this.videoWatch.completedAt = now;
+            this.log(completedBySeekBar ? 'Seek bar reached 100%; waiting brief completion grace...' : 'Video API reports completion; waiting brief completion grace...');
+          }
+
+          const graceMs = this.getCompletionGraceMs(video.duration);
+          if (now - this.videoWatch.completedAt >= graceMs) {
+            await this.scrollNext(completedBySeekBar ? 'seek bar reached 100%' : 'video completed');
           }
           return;
         }
 
-        this.videoWatch.nearEndSince = null;
+        this.videoWatch.completedAt = null;
 
         if (now - this.videoWatch.lastProgressAt >= this.interval * 1000) {
           await this.scrollNext('stuck timeout: video progress stopped');
@@ -245,10 +256,16 @@ class AutoScroller {
     this.videoWatch = {
       lastKey: null,
       startedAt: null,
-      nearEndSince: null,
       lastCurrentTime: null,
+      lastSeekProgress: null,
       lastProgressAt: null,
+      completedAt: null,
     };
+  }
+
+  getCompletionGraceMs(duration) {
+    if (!duration || !Number.isFinite(duration)) return 250;
+    return Math.min(Math.max(duration * 0.01 * 1000, 250), 1000);
   }
 
   async getActiveVideoState() {
@@ -290,6 +307,19 @@ class AutoScroller {
       const remaining = duration > 0 ? Math.max(0, duration - currentTime) : null;
       const progress = duration > 0 ? currentTime / duration : 0;
       const source = active.currentSrc || active.src || active.poster || '';
+      const parsePercent = (value) => {
+        if (!value || typeof value !== 'string') return null;
+        const match = value.match(/([\d.]+)%/);
+        if (!match) return null;
+        const percent = Number.parseFloat(match[1]);
+        return Number.isFinite(percent) ? Math.min(Math.max(percent / 100, 0), 1) : null;
+      };
+
+      const playedBar = document.querySelector('.ytProgressBarLineProgressBarPlayed');
+      const playhead = document.querySelector('yt-progress-bar-playhead');
+      const playedProgress = parsePercent(playedBar && playedBar.style ? playedBar.style.width : null);
+      const playheadProgress = parsePercent(playhead && playhead.style ? playhead.style.marginLeft : null);
+      const seekProgress = playedProgress !== null ? playedProgress : playheadProgress;
 
       return {
         key: `${source}|${Math.round(rect.top)}|${Math.round(rect.height)}|${Math.round(duration)}`,
@@ -297,6 +327,8 @@ class AutoScroller {
         duration,
         remaining,
         progress,
+        seekProgress,
+        seekBarFound: seekProgress !== null,
         ended: active.ended,
         paused: active.paused,
         hasUsableDuration: duration > 0 && Number.isFinite(duration),
