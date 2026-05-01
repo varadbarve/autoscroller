@@ -34,7 +34,6 @@ class AutoScroller {
       lastCurrentTime: null,
       lastSeekProgress: null,
       lastProgressAt: null,
-      completedAt: null,
     };
   }
 
@@ -211,7 +210,6 @@ class AutoScroller {
             lastCurrentTime: video.currentTime,
             lastSeekProgress: video.seekProgress,
             lastProgressAt: now,
-            completedAt: null,
           };
           this.log(`Watching video (${Math.round(video.duration)}s) until seek bar reaches 100%...`);
         }
@@ -241,19 +239,10 @@ class AutoScroller {
           && (video.ended || video.progress >= 0.9995 || video.remaining <= 0.05);
 
         if (completedBySeekBar || completedByVideoApi) {
-          if (!this.videoWatch.completedAt) {
-            this.videoWatch.completedAt = now;
-            this.log(completedBySeekBar ? 'Seek bar reached 100%; waiting brief completion grace...' : 'Video API reports completion; waiting brief completion grace...');
-          }
-
-          const graceMs = this.getCompletionGraceMs(video.duration);
-          if (now - this.videoWatch.completedAt >= graceMs) {
-            await this.scrollNext(completedBySeekBar ? 'seek bar reached 100%' : 'video completed');
-          }
+          this.log(completedBySeekBar ? 'Seek bar reached 100%; scrolling immediately...' : 'Video API reports completion; scrolling immediately...');
+          await this.scrollNext(completedBySeekBar ? 'seek bar reached 100%' : 'video completed');
           return;
         }
-
-        this.videoWatch.completedAt = null;
 
         if (now - this.videoWatch.lastProgressAt >= this.interval * 1000) {
           await this.scrollNext('stuck timeout: video progress stopped');
@@ -286,13 +275,7 @@ class AutoScroller {
       lastCurrentTime: null,
       lastSeekProgress: null,
       lastProgressAt: null,
-      completedAt: null,
     };
-  }
-
-  getCompletionGraceMs(duration) {
-    if (!duration || !Number.isFinite(duration)) return 250;
-    return Math.min(Math.max(duration * 0.01 * 1000, 250), 1000);
   }
 
   async getActiveVideoState() {
