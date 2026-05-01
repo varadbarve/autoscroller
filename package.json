@@ -1,0 +1,19 @@
+{
+  "name": "autoscroller",
+  "version": "1.0.0",
+  "description": "Doomscroll Engine for Instagram Reels & YouTube Shorts",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["autoscroller", "doomscroll", "youtube-shorts", "instagram-reels"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.1.0",
+    "playwright": "^1.52.0",
+    "ws": "^8.18.2"
+  }
+}
