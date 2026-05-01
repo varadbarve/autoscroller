@@ -23,6 +23,8 @@ const idleStatus = () => ({
   interval: 5,
 });
 
+const ACTIVE_PLATFORM = 'youtube';
+
 // Broadcast to all connected WebSocket clients
 function broadcast(data) {
   const msg = JSON.stringify(data);
@@ -49,13 +51,18 @@ wss.on('connection', (ws) => {
 
       switch (msg.type) {
         case 'start': {
+          const requestedPlatform = msg.platform || ACTIVE_PLATFORM;
+          if (requestedPlatform !== ACTIVE_PLATFORM) {
+            throw new Error('Instagram support is parked for now. This build only runs YouTube Shorts.');
+          }
+
           if (scroller && scroller.isRunning()) {
             const oldScroller = scroller;
             scroller = null;
             await oldScroller.stop();
           }
           const nextScroller = new AutoScroller({
-            platform: msg.platform || 'youtube',
+            platform: ACTIVE_PLATFORM,
             interval: msg.interval || 5,
             browserType: msg.browserType || 'chromium',
             onStatusUpdate: (status) => broadcast({ type: 'status', data: status }),

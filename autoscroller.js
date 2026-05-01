@@ -10,8 +10,8 @@ const BROWSER_OPTIONS = {
 
 class AutoScroller {
   constructor({ platform, interval, browserType, onStatusUpdate, onLog }) {
-    this.platform = platform; // 'youtube' or 'instagram'
-    this.interval = interval; // fallback max wait in seconds
+    this.platform = 'youtube';
+    this.interval = interval; // stuck timeout in seconds
     this.browserType = browserType || 'chromium'; // 'chromium', 'chrome', 'msedge', 'firefox'
     this.onStatusUpdate = onStatusUpdate || (() => {});
     this.onLog = onLog || (() => {});
@@ -31,6 +31,8 @@ class AutoScroller {
       lastKey: null,
       startedAt: null,
       nearEndSince: null,
+      lastCurrentTime: null,
+      lastProgressAt: null,
     };
   }
 
@@ -67,11 +69,10 @@ class AutoScroller {
       const browserOpt = BROWSER_OPTIONS[this.browserType] || BROWSER_OPTIONS.chromium;
       const engine = browserOpt.engine === 'firefox' ? firefox : chromium;
 
-      this.log(`Starting ${this.platform === 'youtube' ? 'YouTube Shorts' : 'Instagram Reels'} scroller using ${browserOpt.label}...`);
+      this.log(`Starting YouTube Shorts scroller using ${browserOpt.label}...`);
 
       const path = require('path');
-      // Separate profile per platform AND browser to avoid conflicts
-      this.userDataDir = path.join(__dirname, '.browser-data', `${this.platform}-${this.browserType}`);
+      this.userDataDir = path.join(__dirname, '.browser-data', `youtube-${this.browserType}`);
 
       const launchOptions = {
         headless: false,
@@ -101,41 +102,26 @@ class AutoScroller {
 
       this.page = this.browser.pages()[0] || await this.browser.newPage();
 
-      const url = this.platform === 'youtube'
-        ? 'https://www.youtube.com/shorts'
-        : 'https://www.instagram.com/reels/';
+      const url = 'https://www.youtube.com/shorts';
 
       this.log(`Navigating to ${url}`);
       await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await this.page.waitForTimeout(3000);
 
-      if (this.platform === 'instagram') {
-        const loginBtn = await this.page.$('input[name="username"]');
-        if (loginBtn) {
-          this.state = 'login';
-          this.emitStatus();
-          this.log('Instagram login required. Please log in manually in the browser window.');
-          this.log('The scroller will start automatically after you log in and reach the Reels page.');
-          await this.waitForLogin();
+      try {
+        const consentBtn = await this.page.$('button[aria-label="Accept all"]');
+        if (consentBtn) {
+          await consentBtn.click();
+          await this.page.waitForTimeout(2000);
         }
-      }
 
-      if (this.platform === 'youtube') {
-        try {
-          const consentBtn = await this.page.$('button[aria-label="Accept all"]');
-          if (consentBtn) {
-            await consentBtn.click();
-            await this.page.waitForTimeout(2000);
-          }
-
-          const rejectBtn = await this.page.$('tp-yt-paper-button.style-scope.ytd-consent-bump-v2-lightbox:last-child');
-          if (rejectBtn) {
-            await rejectBtn.click();
-            await this.page.waitForTimeout(2000);
-          }
-        } catch (e) {
-          // Consent dialog might not appear.
+        const rejectBtn = await this.page.$('tp-yt-paper-button.style-scope.ytd-consent-bump-v2-lightbox:last-child');
+        if (rejectBtn) {
+          await rejectBtn.click();
+          await this.page.waitForTimeout(2000);
         }
+      } catch (e) {
+        // Consent dialog might not appear.
       }
 
       await this.clickFirstVideo();
@@ -156,51 +142,21 @@ class AutoScroller {
     }
   }
 
-  async waitForLogin() {
-    const maxWait = 300000;
-    const startWait = Date.now();
-
-    while (Date.now() - startWait < maxWait) {
-      try {
-        const currentUrl = this.page.url();
-        if (currentUrl.includes('/reels') || currentUrl.includes('/reel/')) {
-          this.log('Login detected. Proceeding...');
-          await this.page.waitForTimeout(3000);
-          return;
-        }
-
-        const feedContent = await this.page.$('article, [role="main"] video, svg[aria-label="Reels"]');
-        if (feedContent) {
-          await this.page.goto('https://www.instagram.com/reels/', { waitUntil: 'domcontentloaded' });
-          await this.page.waitForTimeout(3000);
-          this.log('Login detected. Navigated to Reels.');
-          return;
-        }
-      } catch (e) {
-        // Page might be navigating.
-      }
-      await this.page.waitForTimeout(2000);
-    }
-
-    throw new Error('Login timeout. Please try again.');
-  }
+  // Instagram is parked for later. Notes for the future Instagram pass:
+  // - Navigate to https://www.instagram.com/reels/
+  // - Detect login with input[name="username"].
+  // - Wait up to 5 minutes for a logged-in state.
+  // - Logged-in hints used previously: article, [role="main"] video, svg[aria-label="Reels"].
+  // - First reel selectors used previously: a[href*="/reel/"], div._aagu video, article video.
+  // - Scroll fallback used previously: ArrowDown plus container.scrollBy on div._aanv, section main, or documentElement.
 
   async clickFirstVideo() {
     try {
-      if (this.platform === 'youtube') {
-        const short = await this.page.$('ytd-rich-item-renderer a#thumbnail, a.shortsLockupViewModelHostEndpoint, ytd-reel-item-renderer a, a[href*="/shorts/"]');
-        if (short) {
-          await short.click();
-          await this.page.waitForTimeout(2000);
-          this.log('Opened first Short.');
-        }
-      } else {
-        const reel = await this.page.$('a[href*="/reel/"], div._aagu video, article video');
-        if (reel) {
-          await reel.click();
-          await this.page.waitForTimeout(2000);
-          this.log('Opened first Reel.');
-        }
+      const short = await this.page.$('ytd-rich-item-renderer a#thumbnail, a.shortsLockupViewModelHostEndpoint, ytd-reel-item-renderer a, a[href*="/shorts/"]');
+      if (short) {
+        await short.click();
+        await this.page.waitForTimeout(2000);
+        this.log('Opened first Short.');
       }
     } catch (e) {
       this.log('First video auto-click skipped; you may already be viewing content.');
@@ -210,7 +166,7 @@ class AutoScroller {
   startSmartScrollLoop() {
     this.stopSmartScrollLoop();
     this.resetVideoWatch();
-    this.log(`Smart mode enabled. Scrolling when the active video ends; fallback max wait is ${this.interval}s.`);
+    this.log(`Smart mode enabled. Scrolling when the active video ends; stuck timeout is ${this.interval}s.`);
 
     this.watchTimer = setInterval(async () => {
       if (this.state !== 'running' || this.isScrolling) return;
@@ -223,7 +179,7 @@ class AutoScroller {
           if (!this.videoWatch.startedAt) this.videoWatch.startedAt = now;
 
           if (now - this.videoWatch.startedAt >= this.interval * 1000) {
-            await this.scrollNext('fallback: no readable active video');
+            await this.scrollNext('stuck timeout: no readable active video');
           }
           return;
         }
@@ -233,12 +189,24 @@ class AutoScroller {
             lastKey: video.key,
             startedAt: now,
             nearEndSince: null,
+            lastCurrentTime: video.currentTime,
+            lastProgressAt: now,
           };
           this.log(`Watching video (${Math.round(video.duration)}s) until completion...`);
         }
 
-        if (video.paused && now - this.videoWatch.startedAt >= this.interval * 1000) {
-          await this.scrollNext('fallback: video paused or blocked');
+        const lastCurrentTime = this.videoWatch.lastCurrentTime;
+        const hasProgressed = lastCurrentTime === null || video.currentTime > lastCurrentTime + 0.15;
+
+        if (hasProgressed) {
+          this.videoWatch.lastCurrentTime = video.currentTime;
+          this.videoWatch.lastProgressAt = now;
+        } else if (!this.videoWatch.lastProgressAt) {
+          this.videoWatch.lastProgressAt = now;
+        }
+
+        if (video.paused && now - this.videoWatch.lastProgressAt >= this.interval * 1000) {
+          await this.scrollNext('stuck timeout: video paused or blocked');
           return;
         }
 
@@ -257,8 +225,8 @@ class AutoScroller {
 
         this.videoWatch.nearEndSince = null;
 
-        if (now - this.videoWatch.startedAt >= this.interval * 1000) {
-          await this.scrollNext('fallback max wait reached');
+        if (now - this.videoWatch.lastProgressAt >= this.interval * 1000) {
+          await this.scrollNext('stuck timeout: video progress stopped');
         }
       } catch (err) {
         this.log(`Smart watch error: ${err.message}`);
@@ -278,6 +246,8 @@ class AutoScroller {
       lastKey: null,
       startedAt: null,
       nearEndSince: null,
+      lastCurrentTime: null,
+      lastProgressAt: null,
     };
   }
 
@@ -339,19 +309,7 @@ class AutoScroller {
 
     try {
       this.isScrolling = true;
-      if (this.platform === 'youtube') {
-        await this.page.keyboard.press('ArrowDown');
-      } else {
-        await this.page.keyboard.press('ArrowDown');
-        await this.page.evaluate(() => {
-          const container = document.querySelector('div._aanv')
-            || document.querySelector('section main')
-            || document.documentElement;
-          if (container) {
-            container.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
-          }
-        });
-      }
+      await this.page.keyboard.press('ArrowDown');
 
       this.scrollCount++;
       this.resetVideoWatch();
@@ -386,7 +344,7 @@ class AutoScroller {
     this.interval = newInterval;
     this.resetVideoWatch();
     this.emitStatus();
-    this.log(`Fallback max wait set to ${newInterval}s.`);
+    this.log(`Stuck timeout set to ${newInterval}s.`);
   }
 
   async stop() {

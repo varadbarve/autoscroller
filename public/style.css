@@ -285,6 +285,19 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+.platform-card:disabled,
+.platform-card-passive {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.platform-card:disabled:hover,
+.platform-card-passive:hover {
+  border-color: var(--border-glass);
+  transform: none;
+  box-shadow: none;
+}
+
 .platform-card:hover::before {
   opacity: 0.5;
 }
@@ -837,4 +850,8 @@ body {
 
 .platform-card:not(.active):hover {
   opacity: 1;
+}
+
+.platform-card-passive:not(.active):hover {
+  opacity: 0.45;
 }
