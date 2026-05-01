@@ -6,6 +6,7 @@ const BROWSER_OPTIONS = {
   chrome:   { engine: 'chromium', channel: 'chrome',  label: 'Google Chrome' },
   msedge:   { engine: 'chromium', channel: 'msedge',  label: 'Microsoft Edge' },
   firefox:  { engine: 'firefox',  channel: undefined, label: 'Firefox' },
+  existing: { engine: 'chromium', channel: undefined, label: 'Existing Browser (CDP)' },
 };
 
 class AutoScroller {
@@ -72,42 +73,58 @@ class AutoScroller {
 
       this.log(`Starting YouTube Shorts scroller using ${browserOpt.label}...`);
 
-      const path = require('path');
-      this.userDataDir = path.join(__dirname, '.browser-data', `youtube-${this.browserType}`);
-
-      const launchOptions = {
-        headless: false,
-        viewport: { width: 430, height: 932 },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-      };
-
-      // Chromium-based browsers support args and channel
-      if (browserOpt.engine === 'chromium') {
-        launchOptions.args = [
-          '--disable-blink-features=AutomationControlled',
-          '--no-sandbox',
-        ];
-        if (browserOpt.channel) {
-          launchOptions.channel = browserOpt.channel;
+      if (this.browserType === 'existing') {
+        try {
+          this.browser = await chromium.connectOverCDP('http://localhost:9222');
+          this.context = this.browser.contexts()[0];
+          this.page = this.context.pages().find(p => p.url().includes('youtube.com/shorts')) 
+                      || this.context.pages()[0] 
+                      || await this.context.newPage();
+        } catch (err) {
+          throw new Error('Could not connect. You must start your browser with: --remote-debugging-port=9222');
         }
-      }
-
-      // Firefox uses a different arg format; keep defaults
-      if (browserOpt.engine === 'firefox') {
-        launchOptions.firefoxUserPrefs = {
-          'media.autoplay.default': 0, // allow autoplay
+      } else {
+        const path = require('path');
+        this.userDataDir = path.join(__dirname, '.browser-data', `youtube-${this.browserType}`);
+  
+        const launchOptions = {
+          headless: false,
+          viewport: { width: 430, height: 932 },
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         };
+  
+        // Chromium-based browsers support args and channel
+        if (browserOpt.engine === 'chromium') {
+          launchOptions.args = [
+            '--disable-blink-features=AutomationControlled',
+            '--no-sandbox',
+          ];
+          if (browserOpt.channel) {
+            launchOptions.channel = browserOpt.channel;
+          }
+        }
+  
+        // Firefox uses a different arg format; keep defaults
+        if (browserOpt.engine === 'firefox') {
+          launchOptions.firefoxUserPrefs = {
+            'media.autoplay.default': 0, // allow autoplay
+          };
+        }
+  
+        this.browser = await engine.launchPersistentContext(this.userDataDir, launchOptions);
+  
+        this.page = this.browser.pages()[0] || await this.browser.newPage();
       }
-
-      this.browser = await engine.launchPersistentContext(this.userDataDir, launchOptions);
-
-      this.page = this.browser.pages()[0] || await this.browser.newPage();
 
       const url = 'https://www.youtube.com/shorts';
 
-      this.log(`Navigating to ${url}`);
-      await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await this.page.waitForTimeout(3000);
+      if (this.browserType === 'existing' && this.page.url().includes('youtube.com/shorts')) {
+        this.log(`Already on YouTube Shorts, proceeding...`);
+      } else {
+        this.log(`Navigating to ${url}`);
+        await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await this.page.waitForTimeout(3000);
+      }
 
       try {
         const consentBtn = await this.page.$('button[aria-label="Accept all"]');
@@ -168,6 +185,8 @@ class AutoScroller {
     this.stopSmartScrollLoop();
     this.resetVideoWatch();
     this.log(`Smart mode enabled. Scrolling when the active video ends; stuck timeout is ${this.interval}s.`);
+
+    let lastErrorMessage = null;
 
     this.watchTimer = setInterval(async () => {
       if (this.state !== 'running' || this.isScrolling) return;
@@ -240,7 +259,15 @@ class AutoScroller {
           await this.scrollNext('stuck timeout: video progress stopped');
         }
       } catch (err) {
-        this.log(`Smart watch error: ${err.message}`);
+        // Ignore expected errors during navigation or tab closure
+        const isExpected = err.message.includes('Execution context was destroyed') || 
+                           err.message.includes('Target closed') || 
+                           err.message.includes('browser has been closed');
+        
+        if (!isExpected && lastErrorMessage !== err.message) {
+          this.log(`Smart watch error: ${err.message}`);
+          lastErrorMessage = err.message;
+        }
       }
     }, 400);
   }

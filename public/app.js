@@ -32,6 +32,7 @@
     chrome: 'Chrome',
     msedge: 'Edge',
     firefox: 'Firefox',
+    existing: 'Existing Browser',
   };
 
   let ws = null;
@@ -250,4 +251,4 @@
 
   createParticles();
   connect();
-})();
+}
