@@ -11,7 +11,7 @@ const BROWSER_OPTIONS = {
 
 class AutoScroller {
   constructor({ platform, interval, browserType, onStatusUpdate, onLog }) {
-    this.platform = 'youtube';
+    this.platform = platform || 'youtube';
     this.interval = interval; // stuck timeout in seconds
     this.browserType = browserType || 'chromium'; // 'chromium', 'chrome', 'msedge', 'firefox'
     this.onStatusUpdate = onStatusUpdate || (() => {});
@@ -138,7 +138,7 @@ class AutoScroller {
           await rejectBtn.click();
           await this.page.waitForTimeout(2000);
         }
-      } catch (e) {
+      } catch {
         // Consent dialog might not appear.
       }
 
@@ -425,7 +425,7 @@ class AutoScroller {
           browser.close(),
           new Promise((resolve) => setTimeout(resolve, 3000)),
         ]);
-      } catch (e) {
+        } catch {
         // Ignore close errors.
       }
     }

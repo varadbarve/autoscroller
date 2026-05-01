@@ -128,7 +128,7 @@
       btnPause.querySelector('svg').innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
     }
 
-    if (status.interval && speedSlider.value != status.interval) {
+    if (status.interval && parseInt(speedSlider.value, 10) !== status.interval) {
       speedSlider.value = status.interval;
       speedValue.textContent = status.interval + 's';
     }
@@ -251,4 +251,4 @@
 
   createParticles();
   connect();
-}
+})();
